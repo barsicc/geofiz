@@ -21,8 +21,10 @@ MAP = ROOT / "КАРТА.md"
 SOURCE_DIRS = sorted(p for p in ROOT.iterdir() if p.is_dir() and re.match(r"\d\d_", p.name))
 NOTES, FIGS, UPLOAD = ROOT / "конспекты", ROOT / "рисунки", ROOT / "upload"
 SKIP = {"README.md", ".gitkeep"}
-# коды, конспект которых называется иначе (оглавления больших книг → общий разбор литературы)
-ALIAS = {"Латышова2007": "ЛИТ", "Добрынин": "ЛИТ", "ЛВТ1990": "ЛИТ"}
+# коды, у которых конспекты/рисунки называются иначе (префикс имени файла → код конспектов)
+ALIAS = {"Латышова2007": "Лат2007", "Добрынин": "Доб", "ЛВТ1990": "ЛВТ"}
+# оглавления больших книг → общий план литературы
+TOC_CODE = "ЛИТ"
 
 
 def pdf_pages(path):
@@ -68,6 +70,9 @@ def registry():
             if f.suffix.lower() == ".md":
                 continue
             code = f.stem.split("_")[0]
+            if f.parent.name == "оглавления":
+                code = TOC_CODE
+            code = ALIAS.get(code, code)
             pages = pdf_pages(f) if f.suffix.lower() == ".pdf" else None
             notes = notes_for(code)
             notes_s = "<br>".join(f"[{n.stem}]({rel(n)})" for n in notes) if notes else "⚠️ нет конспекта"
