@@ -35,14 +35,46 @@ PARAMS = {  # стр.: (верхняя), (нижняя) — ρвм/ρр; D/dс; 
 }
 
 
+# остальные палетки: диапазон X и шифры (по картинкам); калибровка k — по запросу (--ruler ID, снять 4 угла)
+for _id, _X, _c in [
+    ('12в', (2, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]), ('12н', (2, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]),
+    ('13в', (4, 30), [0.1, 1, 5, 10, 20, 40, 60, 100, 150]), ('13н', (4, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]),
+    ('14в', (4, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]), ('14н', (6, 30), [0.1, 1, 10, 20, 40, 60, 100, 150]),
+    ('16в', (6, 30), [1, 10, 20, 40, 60, 100, 150]), ('16н', (8, 30), [1, 10, 20, 40, 60, 100, 150]),
+    ('17в', (2, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]), ('17н', (2, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]),
+    ('18в', (4, 30), [0.1, 1, 5, 10, 20, 40, 60, 100, 150]), ('18н', (2, 30), [0.1, 5, 10, 20, 40, 60, 80, 100, 150]),
+    ('19в', (4, 30), [0.1, 5, 10, 20, 40, 60, 80, 100, 150]), ('19н', (6, 30), [0.1, 1, 10, 20, 40, 60, 100, 150]),
+    ('20в', (2.5, 30), [0.1, 5, 10, 20, 40, 60, 100, 150]), ('20н', (4, 30), [0.1, 1, 10, 20, 40, 60, 100, 150]),
+    ('21в', (6, 30), [0.1, 1, 10, 20, 40, 60, 100, 150]), ('21н', (6, 30), [1, 10, 20, 40, 60, 100, 150])]:
+    _p = PARAMS[int(_id[:2])][0 if _id[2] == 'в' else 1]
+    CAL[_id] = dict(f=f'стр{_id}.png', kind='inv', par=f'ρвм/ρр={_p[0]}; D/dс={_p[1]}; ρзп/ρр={_p[2]}', X=_X, k=None, c=_c)
+# ⚠ шифры/диапазоны 18в, 20в и нижние кривые 12в — проверить по картинке перед использованием
+
+
+def ruler(id_):
+    im = Image.open(os.path.join(IMG, CAL[id_]['f'])).convert('RGB'); W, H = im.size
+    big = Image.new('RGB', (W + 70, H + 40), 'white'); big.paste(im, (60, 0)); d = ImageDraw.Draw(big)
+    for y in range(0, H, 25):
+        d.line((48 if y % 50 else 40, y, 60, y), fill=(255, 0, 0))
+        if y % 50 == 0: d.text((0, y - 5), str(y), fill=(255, 0, 0))
+    for x in range(0, W, 25):
+        d.line((x + 60, H, x + 60, H + (10 if x % 50 == 0 else 5)), fill=(255, 0, 0))
+        if x % 50 == 0: d.text((x + 52, H + 14), str(x), fill=(255, 0, 0))
+    out = f'/tmp/ruler_{id_}.png'; big.save(out); return out
+
+
 def choose(rvm_r, D_d, rzp_r):
-    best = None
-    for p, (a, b) in PARAMS.items():
-        for tag, (r, D, z) in (('в', a), ('н', b)):
-            k = (abs(r - rvm_r) / 4, abs(D - D_d) / 2, abs(z - rzp_r) / 10)  # нормированные «линейные» расстояния
-            score = sum(k)
-            if best is None or score < best[0]: best = (score, f'{p}{tag}', (r, D, z))
-    return best[1], best[2]
+    """как в методичке МСП: каждый параметр — к ближайшему (линейно) значению; при равенстве — оба варианта"""
+    def near(v, opts):
+        d = sorted(opts, key=lambda o: abs(o - v)); return [o for o in d if abs(abs(o - v) - abs(d[0] - v)) < 1e-9]
+    out = []
+    for r in near(rvm_r, [1, 5]):
+        for D in near(D_d, [2, 4, 6]):
+            for z in near(rzp_r, [10, 20, 50, 100]):
+                for p, (a, b) in PARAMS.items():
+                    for tag, q in (('в', a), ('н', b)):
+                        if q == (r, D, z): out.append((f'{p}{tag}', q))
+    return out
 
 
 def _pt(cal, lx, nu):
@@ -111,8 +143,10 @@ def draw(cal, X, nus, out):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(); ap.add_argument('id', nargs='?'); ap.add_argument('X', type=float, nargs='?')
     ap.add_argument('--c', type=float, help='шифр, для которого нужно ν'); ap.add_argument('--skip', type=int, default=0)
-    ap.add_argument('--list', action='store_true'); ap.add_argument('--choose', type=float, nargs=3, metavar=('RVM_R', 'D_D', 'RZP_R'))
+    ap.add_argument('--list', action='store_true'); ap.add_argument('--ruler', help='картинка с линейкой (пиксели) для калибровки'); ap.add_argument('--choose', type=float, nargs=3, metavar=('RVM_R', 'D_D', 'RZP_R'))
     a = ap.parse_args()
+    if a.ruler:
+        print(ruler(a.ruler), '— снять пиксели углов (Xmin,0),(Xmax,0),(Xmin,1),(Xmax,1) и вписать в CAL[...]["k"] (координата x = отсчёт линейки, без сдвига 60)'); sys.exit()
     if a.list:
         for k, v in CAL.items(): print(k, v['par'], 'калибровка есть' if v.get('k') else 'НЕТ калибровки (см. tools/nu.py)')
         sys.exit()
